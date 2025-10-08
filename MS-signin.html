@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Microsoft Entra ID Authentication Test</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 40px;
+      background-color: #f5f5f5;
+    }
+    #auth-container {
+      max-width: 700px;
+      margin: auto;
+      padding: 30px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+    h1 {
+      color: #0078d4;
+      margin-top: 0;
+    }
+    .info-box {
+      background-color: #e7f3ff;
+      border-left: 4px solid #0078d4;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 4px;
+    }
+    .info-box p {
+      margin: 5px 0;
+      font-size: 14px;
+    }
+    .status {
+      padding: 15px;
+      margin: 15px 0;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+    .status-success {
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .status-fail {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    .status-info {
+      background-color: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+    }
+    button {
+      padding: 12px 24px;
+      font-size: 16px;
+      cursor: pointer;
+      border: none;
+      border-radius: 4px;
+      margin-right: 10px;
+      transition: background-color 0.3s;
+    }
+    #signInButton {
+      background-color: #0078d4;
+      color: white;
+    }
+    #signInButton:hover {
+      background-color: #005a9e;
+    }
+    #signOutButton {
+      background-color: #d13438;
+      color: white;
+    }
+    #signOutButton:hover {
+      background-color: #a52a2a;
+    }
+    #userInfo {
+      margin-top: 20px;
+    }
+    #userInfo h2 {
+      color: #333;
+      font-size: 20px;
+      margin-bottom: 15px;
+    }
+    .user-detail {
+      background-color: #f9f9f9;
+      padding: 10px;
+      margin: 8px 0;
+      border-radius: 4px;
+      border-left: 3px solid #0078d4;
+    }
+    .user-detail strong {
+      color: #0078d4;
+    }
+    pre {
+      background-color: #f4f4f4;
+      padding: 15px;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-x: auto;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .config-section {
+      background-color: #fff3cd;
+      border: 1px solid #ffc107;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 4px;
+    }
+    .config-section h3 {
+      margin-top: 0;
+      color: #856404;
+    }
+    .config-section code {
+      background-color: #fff;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="auth-container">
+    <h1>🔐 Microsoft Entra ID Authentication Test</h1>
+    
+    <div class="info-box">
+      <p><strong>Purpose:</strong> Test Microsoft Entra ID authentication before integrating into Word add-in</p>
+      <p><strong>Port:</strong> 5500 (configured for local testing)</p>
+      <p><strong>Method:</strong> Redirect-based authentication (more reliable than popups)</p>
+    </div>
+
+    <div class="config-section">
+      <h3>⚙️ Configuration Required</h3>
+      <p>Before testing, update the following in the code (lines 152-154):</p>
+      <ul>
+        <li><code>clientId</code>: Your Application (client) ID from Azure portal</li>
+        <li><code>authority</code>: Your Directory (tenant) ID from Azure portal</li>
+      </ul>
+      <p><strong>Azure Redirect URI:</strong> Add <code>http://localhost:5500/conalys-frontend/MS-signin.html</code> as a Single-page application (SPA) redirect URI in your Azure App Registration</p>
+      <p><strong>Important:</strong> Remove any old redirect URIs like <code>http://localhost:5500</code> or <code>http://localhost:5500/MS-signin.html</code> from Azure to avoid conflicts.</p>
+    </div>
+
+    <div>
+      <button id="signInButton">Sign In with Microsoft</button>
+      <button id="signOutButton" style="display: none;">Sign Out</button>
+      <button id="testApiButton" style="display: none; background-color: #107c10; color: white;">Test Backend API</button>
+    </div>
+
+    <div id="status"></div>
+
+    <div id="userInfo" style="display: none;">
+      <h2>✅ User Information</h2>
+      <div id="userDetails"></div>
+      <h3>ID Token Claims (for debugging)</h3>
+      <pre id="userInfoPayload"></pre>
+    </div>
+
+    <div id="apiResult" style="display: none; margin-top: 20px;">
+      <h2>🔌 Backend API Response</h2>
+      <pre id="apiResultPayload"></pre>
+    </div>
+  </div>
+
+  <!-- MSAL.js v2 library -->
+  <script src="https://alcdn.msauth.net/browser/2.32.2/js/msal-browser.min.js"
+    crossorigin="anonymous"></script>
+
+  <script>
+    // ============================================
+    // 1. MSAL CONFIGURATION
+    // ============================================
+    const YOUR_CLIENT_ID = '967cb570-6128-4ceb-83a3-bf694a05b383';
+    const YOUR_TENANT_ID = '65767645-03a9-49c4-9e32-2fb38de843ce';
+    const msalConfig = {
+      auth: {
+        // REQUIRED: Replace with your Application (client) ID from Azure portal
+        clientId: YOUR_CLIENT_ID,
+        // REQUIRED: Replace YOUR_TENANT_ID with your Directory (tenant) ID
+        authority: `https://login.microsoftonline.com/${YOUR_TENANT_ID}`,
+        // Redirect URI configured for port 5500 - must match Azure configuration
+        redirectUri: "http://localhost:5500/conalys-frontend/MS-signin.html",
+      },
+      cache: {
+        cacheLocation: "localStorage", // Use "localStorage" for persistence across browser sessions
+        storeAuthStateInCookie: false,
+      },
+      system: {
+        loggerOptions: {
+          loggerCallback: (level, message, containsPii) => {
+            if (containsPii) {
+              return;
+            }
+            switch (level) {
+              case msal.LogLevel.Error:
+                console.error(message);
+                return;
+              case msal.LogLevel.Info:
+                console.info(message);
+                return;
+              case msal.LogLevel.Verbose:
+                console.debug(message);
+                return;
+              case msal.LogLevel.Warning:
+                console.warn(message);
+                return;
+            }
+          }
+        }
+      }
+    };
+
+    // Initialize MSAL instance
+    const msalInstance = new msal.PublicClientApplication(msalConfig);
+
+    // ============================================
+    // 2. DEFINE SCOPES
+    // ============================================
+    // 'User.Read' is a basic Microsoft Graph API scope to get user profile info
+    // 'api://...' is the scope for our backend API
+    const loginRequest = {
+      scopes: [
+        "User.Read",
+        "api://b470ee82-df72-407e-8ab2-69191397fa3c/access_as_user"
+      ]
+    };
+
+    // ============================================
+    // 3. UI ELEMENTS
+    // ============================================
+    const signInButton = document.getElementById("signInButton");
+    const signOutButton = document.getElementById("signOutButton");
+    const testApiButton = document.getElementById("testApiButton");
+    const statusDiv = document.getElementById("status");
+    const userInfoDiv = document.getElementById("userInfo");
+    const userDetailsDiv = document.getElementById("userDetails");
+    const userInfoPayload = document.getElementById("userInfoPayload");
+    const apiResultDiv = document.getElementById("apiResult");
+    const apiResultPayload = document.getElementById("apiResultPayload");
+
+    // ============================================
+    // 4. EVENT HANDLERS
+    // ============================================
+    signInButton.addEventListener("click", () => handleLogin());
+    signOutButton.addEventListener("click", () => handleLogout());
+    testApiButton.addEventListener("click", () => callBackendAPI());
+
+    // ============================================
+    // 5. CORE AUTHENTICATION LOGIC
+    // ============================================
+    function handleLogin() {
+      console.log("🔑 Attempting to sign in...");
+      updateStatus("Redirecting to Microsoft sign-in...", "info");
+
+      // Use redirect flow instead of popup to avoid nested popup issues
+      msalInstance.loginRedirect(loginRequest)
+        .catch(error => {
+          console.error("❌ Login redirect failed:", error);
+          updateStatus(`Login failed: ${error.errorMessage || error.message}`, "fail");
+        });
+    }
+
+    function handleLogout() {
+      const currentAccount = getAccount();
+      if (currentAccount) {
+        console.log("🚪 Attempting to sign out...");
+        const logoutRequest = {
+          account: currentAccount,
+          postLogoutRedirectUri: window.location.href
+        };
+        
+        // Use redirect flow for logout
+        msalInstance.logoutRedirect(logoutRequest)
+          .catch(error => {
+            console.error("❌ Logout failed:", error);
+            updateStatus("Logout failed. Check console for details.", "fail");
+          });
+      }
+    }
+
+    // ============================================
+    // 6. UI UPDATE FUNCTIONS
+    // ============================================
+    function updateStatus(message, type) {
+      statusDiv.innerHTML = message;
+      statusDiv.className = `status status-${type}`;
+    }
+
+    function updateUI(account) {
+      if (account) {
+        // User is signed in
+        signInButton.style.display = "none";
+        signOutButton.style.display = "inline-block";
+        testApiButton.style.display = "inline-block";
+        userInfoDiv.style.display = "block";
+
+        // Display user details
+        const userDetailsHTML = `
+          <div class="user-detail"><strong>Name:</strong> ${account.name || "N/A"}</div>
+          <div class="user-detail"><strong>Email/Username:</strong> ${account.username || "N/A"}</div>
+          <div class="user-detail"><strong>Tenant ID:</strong> ${account.tenantId || "N/A"}</div>
+          <div class="user-detail"><strong>Home Account ID:</strong> ${account.homeAccountId || "N/A"}</div>
+        `;
+        userDetailsDiv.innerHTML = userDetailsHTML;
+
+        // Display full ID token claims for debugging
+        const userInfo = {
+          name: account.name,
+          username: account.username,
+          tenantId: account.tenantId,
+          homeAccountId: account.homeAccountId,
+          localAccountId: account.localAccountId,
+          idTokenClaims: account.idTokenClaims
+        };
+
+        userInfoPayload.textContent = JSON.stringify(userInfo, null, 2);
+      } else {
+        // User is signed out
+        signInButton.style.display = "inline-block";
+        signOutButton.style.display = "none";
+        testApiButton.style.display = "none";
+        userInfoDiv.style.display = "none";
+        apiResultDiv.style.display = "none";
+        statusDiv.innerHTML = "";
+      }
+    }
+
+    function getAccount() {
+      // Get the first account from cache
+      const currentAccounts = msalInstance.getAllAccounts();
+      if (currentAccounts.length === 0) {
+        return null;
+      } else if (currentAccounts.length > 1) {
+        console.warn("⚠️ Multiple accounts detected. Using first account.");
+        return currentAccounts[0];
+      } else {
+        return currentAccounts[0];
+      }
+    }
+
+    // ============================================
+    // 7. ON PAGE LOAD - CRITICAL: Wait for redirect promise before updating UI
+    // ============================================
+    // Handle redirect promise first - this MUST complete before any UI updates
+    msalInstance.handleRedirectPromise()
+      .then(response => {
+        if (response) {
+          // Just returned from redirect - set as active account
+          console.log("✅ Redirect authentication successful:", response);
+          msalInstance.setActiveAccount(response.account);
+          updateUI(response.account);
+          updateStatus("Authentication successful via redirect!", "success");
+        } else {
+          // No redirect response - check for existing account in cache
+          const accounts = msalInstance.getAllAccounts();
+          if (accounts.length > 0) {
+            console.log("ℹ️ Found existing session:", accounts[0]);
+            msalInstance.setActiveAccount(accounts[0]);
+            updateUI(accounts[0]);
+            updateStatus("Already signed in from previous session.", "success");
+          } else {
+            console.log("ℹ️ No existing session found. Please sign in.");
+            updateUI(null);
+          }
+        }
+      })
+      .catch(err => {
+        console.error("❌ Redirect authentication error:", err);
+        updateStatus("Redirect authentication failed. Check console.", "fail");
+        updateUI(null);
+      });
+
+    // Log configuration (without sensitive authority)
+    console.log("📋 MSAL Configuration:");
+    console.log("- Redirect URI:", msalConfig.auth.redirectUri);
+    console.log("- Cache Location:", msalConfig.cache.cacheLocation);
+    console.log("- Client ID configured:", msalConfig.auth.clientId !== YOUR_CLIENT_ID);
+    console.log("- Authority configured:", msalConfig.auth.authority !== `https://login.microsoftonline.com/${YOUR_TENANT_ID}`);
+
+    // ============================================
+    // 8. BACKEND API CALL FUNCTION
+    // ============================================
+    async function callBackendAPI() {
+      const account = getAccount();
+      if (!account) {
+        updateStatus("Please sign in first", "fail");
+        return;
+      }
+
+      try {
+        updateStatus("Calling backend API...", "info");
+        console.log("🔌 Acquiring access token for backend API...");
+        
+        // Acquire token silently for backend API
+        const tokenRequest = {
+          scopes: ["api://b470ee82-df72-407e-8ab2-69191397fa3c/access_as_user"],
+          account: account
+        };
+        
+        const response = await msalInstance.acquireTokenSilent(tokenRequest);
+        console.log("✅ Access token acquired");
+        console.log("Token (first 50 chars):", response.accessToken + "...");
+        
+        // Call backend API
+        console.log("🔌 Calling backend API at http://localhost:3000/api/v1/auth/profile");
+        const apiResponse = await fetch("http://localhost:3000/api/v1/auth/profile", {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${response.accessToken}`,
+            "Content-Type": "application/json"
+          }
+        });
+        
+        if (!apiResponse.ok) {
+          const errorText = await apiResponse.text();
+          throw new Error(`API returned ${apiResponse.status}: ${errorText}`);
+        }
+        
+        const data = await apiResponse.json();
+        console.log("✅ Backend API response:", data);
+        
+        // Display response
+        apiResultPayload.textContent = JSON.stringify(data, null, 2);
+        apiResultDiv.style.display = "block";
+        
+        updateStatus("Backend API call successful! ✅", "success");
+        
+      } catch (error) {
+        console.error("❌ Backend API call failed:", error);
+        
+        if (error.errorCode === "consent_required") {
+          updateStatus("Consent required. Please sign in again to grant permissions.", "fail");
+        } else if (error.errorCode === "interaction_required") {
+          updateStatus("Interaction required. Please sign in again.", "fail");
+        } else if (error.message && error.message.includes("Failed to fetch")) {
+          updateStatus("Backend API call failed: Cannot connect to backend. Make sure the backend server is running on http://localhost:3000", "fail");
+        } else {
+          updateStatus(`Backend API call failed: ${error.message}`, "fail");
+        }
+      }
+    }
+  </script>
+</body>
+</html>

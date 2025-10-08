@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Authenticating...</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      background-color: #f5f5f5;
+    }
+    .loading {
+      text-align: center;
+    }
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #0078d4;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    h2 {
+      color: #0078d4;
+      font-size: 18px;
+      margin: 0;
+    }
+    p {
+      color: #666;
+      font-size: 14px;
+      margin: 10px 0 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="loading">
+    <div class="spinner"></div>
+    <h2>Authenticating...</h2>
+    <p>Please wait while we complete your sign-in.</p>
+  </div>
+
+  <!-- MSAL.js v2 library - MUST match version used in main app -->
+  <script src="https://alcdn.msauth.net/browser/2.32.2/js/msal-browser.min.js"
+    crossorigin="anonymous"></script>
+
+  <script>
+    // ============================================
+    // MSAL CONFIGURATION - Must match main app
+    // ============================================
+    const msalConfig = {
+      auth: {
+        clientId: '967cb570-6128-4ceb-83a3-bf694a05b383',
+        authority: 'https://login.microsoftonline.com/65767645-03a9-49c4-9e32-2fb38de843ce',
+        redirectUri: "http://localhost:5500/conalys-frontend/auth-popup.html"
+      },
+      cache: {
+        cacheLocation: "localStorage",
+        storeAuthStateInCookie: false
+      }
+    };
+
+    // Initialize MSAL instance
+    const msalInstance = new msal.PublicClientApplication(msalConfig);
+
+    console.log("🔐 Auth popup redirect handler loaded");
+    console.log("📋 Redirect URI:", msalConfig.auth.redirectUri);
+
+    // ============================================
+    // HANDLE REDIRECT RESPONSE
+    // ============================================
+    // This processes the authentication response from Microsoft
+    // and automatically closes the popup window
+    msalInstance.handleRedirectPromise()
+      .then((response) => {
+        if (response) {
+          console.log("✅ Authentication response processed successfully");
+          console.log("🔒 Account:", response.account.username);
+          console.log("🪟 Popup will close automatically");
+        } else {
+          console.log("ℹ️ No authentication response found");
+        }
+        // Popup closes automatically after processing
+      })
+      .catch((error) => {
+        console.error("❌ Error processing authentication response:", error);
+        console.error("Error code:", error.errorCode);
+        console.error("Error message:", error.errorMessage || error.message);
+      });
+  </script>
+</body>
+</html>
